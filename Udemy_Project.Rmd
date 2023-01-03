@@ -1,0 +1,298 @@
+---
+title: "Udemy Course Analysis"
+author: "Victor Nyakako"
+date: "2022-12-24"
+output:
+  html_document: default
+  
+---
+
+### **Introduction**
+
+Udemy is an online learning platform that offers broad range of courses. It is one of the go to platforms among learners seeking to upskill and broaden their horizons. 
+
+In this analysis, a dataset containing udemy courses up to 2017 is used. The datasets only focus on business, music, design, and web development courses. 
+
+## **Loading the Packages**
+
+The packages used are:
+
+* tidyverse
+* janitor
+* lubridate
+* skimr
+
+```{r, echo=FALSE}
+library(tidyverse)
+library(janitor)
+library(skimr)
+library(lubridate)
+```
+
+
+
+## **Loading the Dataset**
+```{r echo=TRUE}
+web_courses<- read_csv("Web development Courses.csv")
+music_courses<- read_csv("Music Courses.csv")
+business_courses<- read_csv("Business Courses.csv")
+design_courses <- read_csv("Design Courses.csv")
+```
+
+
+## **Merging the Data**
+
+Let's combine the datasets into a single dataset named "udemy_courses"
+
+```{r}
+udemy_courses <- rbind(business_courses, music_courses, web_courses, design_courses)
+```
+
+## **Exploratory Data Analysis**
+
+Let us explore the data, and get to find its structure.
+
+
+```{r}
+skim(udemy_courses)
+```
+
+```{r}
+udemy_courses[is.na(udemy_courses$course_id),] #checking the subset with missing 'course_id'
+```
+
+
+## **Missing Values**
+
+From the exploration using skim function, we learn that there are some columns with missing values. It turns out that the missing values stems from the null records of "course_id" column. The 3 rows with missing 'course_id' will thus be expunged. 
+
+## **Further Exploration**
+
+The data can be explored further. We can check on the correlation between subscription (num_subscribers) and rating. The business question would be, "does the subscription affect rating?" 
+
+From the scatter point below, it is evident that increased subscription does no affect ratings in any way across all levels. 
+
+```{r, warning=FALSE}
+ggplot(data= udemy_courses, aes(x= Rating , y = num_subscribers ))+
+  geom_point(alpha = 0.5, aes(color = level))+
+  labs(y= "Subscribers")
+```
+
+## **Price Versus Rating**
+
+Do highly priced courses receive higher ratings? It is often presumed that expensive courses are of great quality thus attracting an upward rating. 
+
+Evidently, there is no clear relationship between the price of the courses and their ratings. Surprisingly, many free courses have very high ratings.  
+
+ 
+```{r, warning=FALSE}
+ggplot(data= udemy_courses, aes(x= price, y = Rating))+
+ geom_point(position = position_jitter(w=100, h=0), color= "#dada72")+
+   scale_x_continuous(limits = c(0,200))
+```
+
+
+## **Data Cleaning**
+
+We discovered missing values in our dataset, let's remove them. Additionally, we do not need the url column, so we got to drop it off. We should also ensure that the columns are consistent, and clean_names from janitor package will be handy. Furthermore, we will remove the strings 'level' and 'levels' from the records in the level column. 'Beginner', 'Intermediate', etc., can suffice in place of 'Beginner level', 'All levels,' etc. str_replace_all function from the stringr package will be useful here. 
+
+```{r}
+udemy_courses <- udemy_courses[!is.na(udemy_courses$course_id),] #only return the rows where course_id is not null. 
+sum(is.na(udemy_courses))
+
+udemy_courses<- udemy_courses %>%
+  select(-url)# return all columns except "url"
+
+udemy_courses<- clean_names(udemy_courses) # For consistent casing and naming of the columns
+
+udemy_courses$level <- str_replace_all(udemy_courses$level, " Level", "")
+udemy_courses$level <- str_replace_all(udemy_courses$level, " Levels", "")
+udemy_courses$level <- ifelse(udemy_courses$level== "Alls", "All",udemy_courses$level)
+
+
+  
+```
+
+
+## **Feature Engineering**
+
+There is need for the creation of some new features like, 'year' and hour. This will help in knowing the years and the hours the courses were posted. 
+
+```{r}
+udemy_courses$year <- year(udemy_courses$published_timestamp) # creating the 'year' column
+
+udemy_courses$posting_hour <- hour(udemy_courses$published_timestamp) # creating the 'hour' column
+udemy_courses$free_paid <- ifelse(udemy_courses$price == 0, "Free", "Paid") # creating 'free_paid' column
+```
+
+### **Analysis**
+
+Our data has been explored and some cleaning done. Let us now conduct some analysis. 
+
+## **Number of Courses Per Level**
+
+We can see that the courses of all levels take the lead. Expert level courses are the least published during the period. 
+
+```{r}
+level_courses <- udemy_courses%>% 
+  group_by(level) %>% 
+  summarise(number_of_courses = n()) %>% 
+  arrange(desc(number_of_courses))
+
+ggplot(level_courses, aes(x= reorder(level,-number_of_courses), y = number_of_courses))+
+  geom_col(fill = "#dada72")+
+   geom_text(aes(label = number_of_courses), color= "#666666", vjust = 1)+
+  theme_classic()+
+   theme(axis.title.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.line = element_blank(),
+        axis.ticks = element_blank(),
+        axis.title.x = element_blank()
+   )+
+  labs(title = "Number of Courses Per Level")
+ 
+```
+
+## **Number of Subscribers Per Level**
+
+Expert level subscribers are very few. All level subscribers still take the lead. 
+
+```{r}
+level_subscribers<- udemy_courses %>% 
+  group_by(level) %>%            # Creating a subset of the level subscribers
+  summarise(subscribers = sum(num_subscribers)) %>% 
+arrange(desc(subscribers))
+
+ggplot(level_subscribers, aes(x= reorder(level, -subscribers), y = subscribers ))+
+  geom_col(fill= "#dada72" )+
+  geom_text(aes(label = subscribers),color= "#666666", vjust = 1.1)+
+  theme_classic()+
+  theme(axis.text.y = element_blank(),
+        axis.title.y = element_blank(),
+        axis.title = element_blank(),
+        axis.ticks = element_blank(),
+        axis.line = element_blank()
+        )+
+  labs(title = "Subscribers Per Level")
+  
+
+```
+
+## **The Number of Subscribers Per Subject**
+
+How many subscribers do we have per subject? Business Finance, All levels, are the courses with the highest number of subscribers. Conversely, graphic design expert level courses have the least number of subscribers. 
+
+```{r}
+subject_subscribers <- udemy_courses %>% 
+  group_by(subject, level) %>% 
+  summarise(subscribers = n()) %>% 
+  arrange(subject, -subscribers)
+
+print(subject_subscribers)
+```
+
+## **Revenue Per Level**
+
+What are the most priced course levels ? Which ones are charged cheaply? As expected, All level courses generated high revenue for udemy, while expert level courses generating the least amount of revenue. 
+
+```{r}
+level_revenue <- udemy_courses %>% 
+  group_by(level) %>% 
+  summarise(revenue = sum(price)) %>% 
+  arrange(-revenue)
+
+
+ggplot(level_revenue, aes(x= reorder(level,revenue), y= revenue))+geom_col(fill ="#dada72" )+
+  geom_text(aes(label= revenue) ,color= "#666666", hjust = 1)+
+  labs(title = "Revenue (in USD) by Level")+
+    theme_classic()+
+  theme(axis.title = element_blank(),
+        axis.text.x  = element_blank(),
+        axis.line = element_blank(),
+        axis.ticks = element_blank())+
+  coord_flip()
+ 
+  
+
+```
+
+## **The Revenue Trend Across Years**
+
+There has been a steady increase in course revenues for udemy since 2011 to 2016. However, there was a sharp decline in revenue in 2016 through to 2017.
+
+```{r}
+year_revenue <- udemy_courses %>% 
+  group_by(year) %>% 
+  summarise(revenue = sum(price))
+
+ggplot(year_revenue, aes(x=year, y= revenue))+
+  geom_line(color = "#dada72")+
+  theme_classic()+
+  theme(axis.line = element_blank(),
+        axis.ticks = element_blank()
+        )+
+labs(title = "Yearly Revenue", y= "Revenue from Courses (USD)")
+```
+
+## **Top 20 Courses in Terms of Content Duration**
+
+"The Complete figure Drawing Course HD" is the longest course in terms of content duration. The course is 78.5 hours long. 
+
+```{r}
+top_20 <- udemy_courses %>% 
+  select(course_title, content_duration) %>% 
+  top_n(20, wt= content_duration) %>% 
+  arrange(-content_duration)
+
+ggplot(top_20, aes(x= reorder(course_title, content_duration), y = content_duration))+
+  geom_col(fill = "#dada72" )+
+  theme_classic()+
+  theme(axis.title.y = element_blank(),
+        axis.line = element_blank(),
+        axis.ticks = element_blank(),
+        axis.title.x = element_blank(),
+        axis.text.x = element_blank())+
+   geom_text(aes(x = course_title, y = content_duration, 
+                 label = content_duration),color= "#666666", hjust = 3)+
+  labs(title = "Top 20 Courses by Duration")+
+  coord_flip()
+  
+
+
+```
+
+### **The Preferred Posting Hours**
+
+For the period, the content creators posted their courses between 3PM and midnight, with most courses uploaded at 6 PM. This makes sense because most content creators are also full time employees, and they only find time for udemy project during off-work hours. 
+
+
+```{r}
+udemy_courses %>% 
+  group_by(posting_hour) %>% 
+  summarise(number_of_times = n()) %>% 
+  arrange(-number_of_times)
+```
+
+## **Free Courses and Paid Courses**
+
+Generally, there are many paid courses compared to free courses. 
+
+```{r}
+udemy_courses %>% 
+  group_by(free_paid) %>% 
+  summarise(number_of_courses = n())
+```
+
+
+```{r, warning=FALSE}
+
+free.paid <- udemy_courses %>% 
+  group_by(level, free_paid) %>% 
+  summarise(number_of_courses = n()) %>% 
+  arrange(-number_of_courses)
+print(free.paid)
+
+```
+
+
+
